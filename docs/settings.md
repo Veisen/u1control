@@ -40,6 +40,25 @@ plugin uses the same file. Change them on the **Settings** page of the U1 Contro
 | `spoolman_url` | `""` | Spoolman address. Blank uses the printer's own Spoolman link when it has one. |
 | `profile_overrides` | `{}` | Map from a tag to an exact OrcaSlicer filament preset, see below. |
 
+## Camera (both modes)
+
+| Key | Default | Choices | Meaning |
+|---|---|---|---|
+| `camera_fps` | `5` | 5 / 10 / 15 / 30 | Most camera pictures a second U1 Control asks the printer for. Set it on the camera card of the Dashboard. |
+
+It is a ceiling, not a promise. U1 Control fetches the printer's camera picture one at a time and passes
+each one to OrcaSlicer's web view before asking for the next. On the official firmware the printer renews
+that picture (`/server/files/camera/monitor.jpg`) at its own pace, which U1 Control can't change; asking
+more often than that shows the same picture again. The Extended Firmware's `/webcam/snapshot.jpg` can
+change faster. The rate you see also depends on the Wi-Fi and the computer, so 30 fps is often not
+reached.
+
+A picture that hasn't changed since the last one is not sent to the page again. After two unchanged
+pictures in a row U1 Control asks half as often, down to once a second, and asks twice as often again
+each time the picture changes, never faster than `camera_fps`. So the printer gets at most `camera_fps`
+requests a second, only while its picture really changes that fast, and about one a second while it
+stands still.
+
 ## Profile overrides
 
 `profile_overrides` picks an exact filament preset for a tag, ahead of the automatic choice. Keys are
