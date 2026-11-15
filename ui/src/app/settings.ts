@@ -22,13 +22,19 @@ export const dirty = computed(() => {
     || form.host.trim() !== (st.host || '') || form.name.trim() !== (st.printer_name || 'Snapmaker U1') || form.spoolman.trim() !== (st.spoolman_url || '');
 });
 
-function fill(m: Config): void {
-  const keep = !saving.value && dirty.value;
+function fill(m: Config, force = false): void {
+  const keep = !force && !saving.value && dirty.value;
   config.value = m;
   rfidAuto = !!m.settings.rfid_auto_sync;
   if (keep) return;
   const st = m.settings;
   Object.assign(form, { mode: m.mode, host: st.host || '', apiKey: st.api_key || '', name: st.printer_name || 'Snapmaker U1', spoolman: st.spoolman_url || '', draft: {} });
+}
+
+/** Drop what was typed and show the saved values again. */
+export function discard(): void {
+  const c = config.value;
+  if (c && !saving.value) fill(c, true);
 }
 
 export async function save(): Promise<void> {
