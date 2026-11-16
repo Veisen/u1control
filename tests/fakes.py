@@ -60,6 +60,8 @@ class FakePrinter:
     def __init__(self, version="2.0.0.205", state="standby", extended=False, spoolman=False):
         self.version, self.state, self.extended, self.spoolman = version, state, extended, spoolman
         self.scripts, self.deleted, self.started = [], [], []
+        self.uploads, self.order, self.last_body = {}, [], b""
+        self.hold = None   # threading.Event: an M109 script waits for it (a G-code line that takes long)   # /server/files/upload: name -> bytes; request order
         self.files = {}   # "camera/t.mp4" -> bytes served under /server/files/
         self.task = task_config()
         self.tags = {}   # head -> filament_detect info dict
@@ -91,6 +93,17 @@ class FakePrinter:
         self.server.shutdown()
         self.server.server_close()
 
+    @staticmethod
+    def parse_upload(content_type, body):
+        """(filename, file bytes) of a Moonraker multipart upload."""
+        boundary = content_type.split("boundary=", 1)[1].encode()
+        for part in body.split(b"--" + boundary):
+            head, _, data = part.partition(b"\r\n\r\n")
+            if b'name="file"' in head:
+                name = head.split(b'filename="', 1)[1].split(b'"', 1)[0].decode()
+                return name, data[:-2] if data.endswith(b"\r\n") else data
+        return None, b""
+
     def status(self):
         return {"print_stats": {"state": self.state, "filename": "a.gcode", "print_duration": 60,
                                 "total_duration": 70, "info": {"current_layer": 3, "total_layer": 10}},
@@ -119,6 +132,7 @@ class FakePrinter:
             def _body(self):
                 n = int(self.headers.get("Content-Length") or 0)
                 raw = self.rfile.read(n) if n else b""
+                fake.last_body = raw
                 try:
                     return json.loads(raw or b"{}")
                 except ValueError:
@@ -171,12 +185,26 @@ class FakePrinter:
                 q = dict(urllib.parse.parse_qsl(u.query))
                 body = self._body()
                 if u.path == "/printer/gcode/script":
+                    if fake.hold is not None and body.get("script", "").startswith("M109"):
+                        fake.hold.wait(10)   # a long G-code line (heating) the test releases
                     if fake.state == "printing" and "SET_PRINT_EXTRUDER_MAP" in body.get("script", ""):
                         return self._send(400, {"error": {"message": "printing"}})
                     fake.scripts.append(body.get("script"))
+                    fake.order.append(("gcode", body.get("script")))
+                    return self._send(200, {"result": "ok"})
+                if u.path == "/server/files/upload":
+                    if len(fake.last_body) != int(self.headers.get("Content-Length") or 0):
+                        return self._send(400, {"error": {"message": "upload cut off"}})   # as Moonraker: no file
+                    name, data = fake.parse_upload(self.headers.get("Content-Type", ""), fake.last_body)
+                    fake.uploads[name] = data
+                    fake.order.append(("upload", name))
+                    return self._send(201, {"result": {"item": {"path": name, "root": "gcodes"}, "action": "create_file"}})
+                if u.path in ("/printer/print/pause", "/printer/print/resume", "/printer/print/cancel"):
+                    fake.order.append((u.path.rsplit("/", 1)[1], None))
                     return self._send(200, {"result": "ok"})
                 if u.path == "/printer/print/start":
                     fake.started.append(body.get("filename"))
+                    fake.order.append(("start", body.get("filename")))
                     return self._send(200, {"result": "ok"})
                 if u.path == "/server/files/directory":
                     fake.made.append(body.get("path"))
@@ -212,6 +240,61 @@ class FakePrinter:
 
 
 # ---------------------------------------------------------------------- orca
+
+# orca.printer_agent, modelled on OrcaSlicer v2.5.0 PrinterAgentPluginCapability.cpp (from kobracontrol tests/fake_orca.py)
+class _Fields:
+    _defaults = {}
+
+    def __init__(self, **kw):
+        for key, value in {**self._defaults, **kw}.items():
+            setattr(self, key, value)
+
+
+class AgentInfo(_Fields):
+    def __init__(self, id="", name="", version="", description=""):
+        self.id, self.name, self.version, self.description = id, name, version, description
+
+
+class PrinterConnectionParams(_Fields):
+    _defaults = {"dev_id": "", "host": "", "port": "", "username": "", "password": "", "use_ssl": False, "ca_file": ""}
+
+
+class PrintParams(_Fields):
+    _defaults = {"dev_id": "", "task_name": "", "project_name": "", "preset_name": "", "filename": "",
+                 "config_filename": "", "plate_index": 1, "dst_file": "", "dev_ip": "", "dev_name": "",
+                 "ams_mapping": "", "ams_mapping2": "", "ams_mapping_info": "", "connection_type": "lan",
+                 "password": "", "username": "", "task_bed_leveling": False, "task_flow_cali": False,
+                 "task_vibration_cali": False, "task_layer_inspect": False, "task_record_timelapse": False,
+                 "task_use_ams": True, "task_bed_type": "", "auto_bed_leveling": 0}
+
+
+class DetectResult(_Fields):
+    _defaults = {k: "" for k in ("result_msg", "command", "dev_id", "model_id", "dev_name", "version", "bind_state",
+                                 "connect_type")}
+
+
+class _Enum:
+    def __init__(self, name, *members):
+        self._name = name
+        for i, m in enumerate(members):
+            setattr(self, m, "%s.%s" % (name, m))
+
+
+def printer_agent_module():
+    class PrinterAgentBase:
+        def __init__(self):
+            pass
+
+        def get_type(self):
+            return "printer-connection"
+
+    return types.SimpleNamespace(
+        PrinterAgentBase=PrinterAgentBase, AgentInfo=AgentInfo, PrinterConnectionParams=PrinterConnectionParams,
+        PrintParams=PrintParams, DetectResult=DetectResult,
+        FilamentSyncMode=_Enum("FilamentSyncMode", "None_", "Subscription", "Pull"),
+        CameraStreamMode=_Enum("CameraStreamMode", "None_", "HTTP", "HTTPS", "HTTP_SNAPSHOT", "RTSP"))
+
+
 
 class FakeWindow:
     def __init__(self, on_message, on_submit, answer):
@@ -268,7 +351,9 @@ def install_orca(answer=None, preset=None, filament_names=(), filament_meta=None
     orca.registered = []
     orca.plugin = lambda cls: cls
     orca.register_capability = orca.registered.append
-    orca.request_permissions = lambda **kw: None
+    orca.printer_agent = printer_agent_module()
+    orca.permission_requests = []
+    orca.request_permissions = lambda **kw: orca.permission_requests.append(kw)
 
     def create_window(html, title="", width=0, height=0, on_message=None, on_close=None, on_submit=None, style=None):
         w = FakeWindow(on_message, on_submit, answer if answer is not None else {"map": {}, "prefs": {}, "purifier": "auto"})

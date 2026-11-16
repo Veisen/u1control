@@ -121,6 +121,64 @@ It does not run for **Export G-code**, for **Print** on the U1 Control Files pag
 **Use printer agents instead of print hosts** preference is on. **Settings > Print setup** in the U1
 Control tab says whether your process preset runs it.
 
+### Printer agent
+
+With OrcaSlicer's printer agents, u1control can be the U1's agent instead, so OrcaSlicer's own Print
+dialog and Device tab work with the U1:
+
+1. In OrcaSlicer, open **Preferences** and turn on **Use printer agents instead of print hosts**.
+2. Open your U1 printer preset, set **Printer Agent** to `u1control` and its host to the U1's IP
+   address. Save the preset.
+
+Then **Print** in OrcaSlicer opens its own print dialog:
+
+- The four toolheads are the four slots, each with its filament and colour. Pick a slot for each
+  filament; a filament you leave unpicked gets the toolhead u1control matches by material and colour.
+- **Auto Bed Leveling**, **Flow Dynamics Calibration** and **Timelapse** start ticked in OrcaSlicer's
+  dialog, so U1 Control's own print options decide what is used: an option runs only when its box is ticked
+  **and** it is on in U1 Control (by default bed leveling and flow calibration are on, time-lapse is off).
+  Unticking a box turns that option off. OrcaSlicer remembers the box; tick it again to go back to
+  U1 Control's setting. Auto-refill, tangle detection, unload when done and
+  light off when done come from the U1 Control settings (the options you last chose), or the printer's own.
+- u1control applies the same G-code fixes as above, then uploads the file, sends the toolhead map and
+  options, and starts the print.
+- A busy U1 (printing, loading, calibrating, updating), an empty toolhead or another material in a picked
+  slot stops the print before anything is sent, with the reason in OrcaSlicer's dialog. Both are checked
+  again after the upload; if something changed, the file stays on the U1 and the print isn't started.
+
+**Send** uploads the fixed G-code without starting it, and refuses the name of the file the U1 is printing. The Device tab shows status, temperatures, the
+toolheads and the light, with pause, resume, stop and the light switch.
+
+The print-host path (U1 print setup) keeps working as before; use one or the other.
+
+When the plugin loads, OrcaSlicer asks once to let u1control read the sliced job from its temp folder:
+`<temp>/orcaslicer_<user id>` on macOS and Linux. On Windows OrcaSlicer writes the job straight into
+`%TEMP%`, so the grant covers your whole `%TEMP%` folder (read only). Without it, the agent can't send.
+
+<details>
+<summary>Em português: usar o u1control como agente de impressora</summary>
+
+1. No OrcaSlicer, abra **Preferências** e ligue **Use printer agents instead of print hosts**.
+2. Abra o perfil de impressora da U1, defina **Printer Agent** como `u1control` e o host como o IP da
+   U1. Salve o perfil.
+
+A janela **Imprimir** do próprio OrcaSlicer passa a mostrar as quatro cabeças como quatro slots, com
+filamento e cor. As caixas **Auto Bed Leveling**, **Flow Dynamics Calibration** e **Timelapse** já vêm
+marcadas, então as opções de impressão do U1 Control decidem: uma opção só roda com a caixa marcada **e**
+ligada no U1 Control (por padrão nivelamento e calibração de fluxo ligados, time-lapse desligado); desmarcar
+a caixa a desliga. O OrcaSlicer lembra a caixa; marque-a de novo para voltar ao ajuste do U1 Control. Reabastecimento automático, detecção de
+emaranhado, descarregar ao terminar e apagar a luz ao terminar vêm dos ajustes do U1 Control. O u1control
+aplica as mesmas correções de G-code, envia o arquivo, o mapa das cabeças e as opções, e inicia a
+impressão. Uma U1 ocupada, uma cabeça vazia ou outro material no slot escolhido impedem o envio, com o
+motivo na janela do OrcaSlicer. O caminho pelo host de impressão (preparo de impressão da U1) continua
+funcionando.
+
+</details>
+
+Not yet confirmed on a real printer: that OrcaSlicer's dialog shows Flow Dynamics Calibration and
+Timelapse for this agent, that its slot numbers arrive as the toolheads 1 to 4, and that flow calibration
+and time-lapse set this way take effect. See the [changelog](CHANGELOG.md).
+
 On every U1 slice u1control also fixes the G-code. Each fix can be turned off in Expert mode.
 
 | Fix | Why |
