@@ -3,7 +3,8 @@ import { installOrcaUI } from '../shared/src';
 import { boot } from './core/boot';
 import { locale, setHostLanguage } from './core/i18n';
 import { followHostTheme } from './core/theme';
-import { primeVueOptions } from '../shared/src';
+import { primeLocale } from './core/prime-locale';
+import { overEnglish } from './core/logic';
 import './styles.css';
 import App from './App.vue';
 import SetupApp from './setup/SetupApp.vue';
@@ -18,6 +19,6 @@ const prime = app.config.globalProperties.$primevue;
 const english = { ...prime.config.locale };
 watch(locale, l => {
   document.documentElement.lang = l;
-  prime.config.locale = { ...english, ...(primeVueOptions(l).locale ?? {}) } as NonNullable<typeof prime.config.locale>;
+  prime.config.locale = overEnglish(english, primeLocale(l)) as NonNullable<typeof prime.config.locale>;
 }, { immediate: true });
 app.mount('#app');

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-16
+
+- U1 Control now speaks Spanish, German and Simplified Chinese as well as English and Portuguese: the U1 Control tab (Dashboard, Files with Time-lapses, Console, Settings), the U1 print setup window, confirmations, empty states, notices and errors, and the progress and error messages u1control shows in OrcaSlicer's Print dialog.
+- The language follows OrcaSlicer's (Spanish, German, Simplified Chinese; Traditional Chinese shows Simplified Chinese; any language U1 Control doesn't have shows English). **Settings > Language** still lets you pick one by hand: Español, Deutsch or 简体中文 now join English and Português (Brasil).
+- Words shared with OrcaSlicer (toolhead, nozzle, bed, preset, time-lapse…) are the ones OrcaSlicer uses in that language. German uses "Sie".
+- Numbers, temperatures, sizes, dates and durations are written the way each language writes them (for example 1.234,5 g and 16.11.26 in German, 1 小时 5 分钟 in Chinese).
+- Text that comes from the printer, Spoolman or the system (Klipper errors, file names, vendor names) is shown as it came, never translated.
+- On a narrow tab, a panel's buttons now wrap under each other when their labels are long, instead of making the page scroll sideways.
+- On a phone-narrow tab, the connection state and printer name get their own line under the bar and the tabs drop their icons, so a long Emergency stop label (Spanish, German) no longer cuts them.
+- Temperature and speed fields take a decimal point as well as the language's own decimal sign: typing or pasting 2.5 in German, Spanish or Portuguese used to give 25. The value sent is still rounded to a whole number.
+- Plugins > Run > Check U1 connection says "official firmware" or "Extended Firmware" in every language, and the top cover mode in the "U1 G-code prepared" notice is translated.
+
 ## [0.11.0] - 2026-11-16
 
 - Files: a new **Time-lapses** section lists every video the U1 recorded, newest first, with its cover picture, the print's name, the date and the size. **Refresh** reads the list again. The length of a video is not shown, because the printer doesn't report it.

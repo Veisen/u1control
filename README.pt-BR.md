@@ -191,7 +191,7 @@ Não. É um projeto independente, não feito nem suportado pela Snapmaker, feito
 
 ## 🌍 Idiomas
 
-Inglês e português do Brasil. A página segue o idioma do OrcaSlicer, ou o que você escolher em **Ajustes > Idioma**. Uma tradução para o polonês foi proposta na [issue #20](https://github.com/bloodf/u1control/issues/20).
+Inglês, português do Brasil, espanhol, alemão e chinês simplificado. A página segue o idioma do OrcaSlicer (chinês tradicional mostra o simplificado; outros idiomas, inglês), ou o que você escolher em **Ajustes > Idioma**. Uma tradução para o polonês foi proposta na [issue #20](https://github.com/bloodf/u1control/issues/20).
 
 ## 🧩 Mais plugins do bloodf
 
