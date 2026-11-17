@@ -49,6 +49,10 @@
   OrcaSlicer might be changing them. The preset changes themselves are still made off the UI thread, as OrcaSlicer
   requires. If OrcaSlicer is too busy to answer within a few seconds, these actions say so and can be tried again.
 
+## [0.12.1] - 2026-11-16
+
+- Changed: the plugin icon is the new brand tile. The U1 Control tab in OrcaSlicer shows the blue tile instead of the old white line drawing.
+
 ## [0.12.0] - 2026-11-16
 
 - U1 Control now speaks Spanish, German and Simplified Chinese as well as English and Portuguese: the U1 Control tab (Dashboard, Files with Time-lapses, Console, Settings), the U1 print setup window, confirmations, empty states, notices and errors, and the progress and error messages u1control shows in OrcaSlicer's Print dialog.
