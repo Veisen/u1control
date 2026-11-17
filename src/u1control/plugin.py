@@ -1124,7 +1124,7 @@ class U1Agent(pa.PrinterAgentBase):
         from Spoolman on a thread of their own, so sync from AMS knows them without the tab ever opening."""
         try:
             presets, label = filament_catalog()
-            mine = user_presets()
+            mine = _user_presets_safe()
             cfg = self._settings().effective()
         except Exception as e:
             log("agent: filament presets not readable (%s); trays show generic presets" % e)
@@ -1165,16 +1165,22 @@ class U1Agent(pa.PrinterAgentBase):
 
     def _preferred(self):
         """preferred(head) for agent.push_status: the filament_id of the head's spool's preset, or ""."""
+        with self._lock:
+            on_main = self._cb.get("queue_on_main")
         if time.time() - self._catalog_at >= CATALOG_EVERY:   # this thread may read files, not presets
             self._catalog_at = time.time()
             profiles = spooler_bridge.read_json(spooler_dir(), spooler_bridge.PROFILES_FILE)
-            with self._lock:
-                on_main = self._cb.get("queue_on_main")
             if on_main is not None:
                 on_main(lambda: self._refresh_catalog(profiles or {}))
         bound = self._bound_spools()
         presets, label, profiles = self._catalog
         mine = self._mine
+
+        if mine and on_main is not None:   # ponytail: no readable user preset at all -> no notice; Apply gives one
+            for index, spool in bound.items():
+                text = link_notice(index + 1, spool.get("orca_preset"), mine)
+                if text:
+                    on_main(lambda text=text: call_safely("notice", notify, text))
 
         def preferred(head):   # a linked standalone user preset first, else the Spooler preset
             spool = bound.get(head["index"])
@@ -1605,7 +1611,9 @@ def filament_catalog():
     presets = []
     for i in range(collection.size()):
         preset = collection.preset(i)
-        if (getattr(preset, "bundle_id", "") or "") != spooler_bridge.BUNDLE_ID or not getattr(preset, "is_compatible", True):
+        # is_compatible defaults to False here and in user_presets: OrcaSlicer 2.5 binds it, and a host that doesn't
+        # can't say a preset suits the printer, which sync from AMS (is_compatible) and a link both need.
+        if (getattr(preset, "bundle_id", "") or "") != spooler_bridge.BUNDLE_ID or not getattr(preset, "is_compatible", False):
             continue
         first = lambda key: (spooler_bridge.as_list(preset.config_value(key)) or [""])[0]   # noqa: E731
         presets.append({"name": preset.name, "bundle_id": spooler_bridge.BUNDLE_ID, "vendor": first("filament_vendor"),
@@ -1620,11 +1628,22 @@ def user_presets():
     out = []
     for i in range(collection.size()):
         preset = collection.preset(i)
-        if preset.name.startswith("_local/") or not getattr(preset, "is_compatible", False) or not preset.is_user():
+        if preset.name.startswith("_local/") or not getattr(preset, "is_compatible", False) or not preset.is_user():   # default: filament_catalog
             continue
         out.append({"name": preset.name, "file": getattr(preset, "file", "") or "",
                     "inherits": clean(preset.config_value("inherits"))})
     return out
+
+
+def _user_presets_safe():
+    """user_presets(), or [] when OrcaSlicer won't answer (logged once): a link problem never stops the rest."""
+    try:
+        return user_presets()
+    except Exception as e:
+        if "user_presets" not in _logged_once:
+            _logged_once.add("user_presets")
+            log("user filament presets not readable (%r); Spoolman preset links are ignored" % e)
+        return []
 
 
 def linked_preset(name, presets):
@@ -1644,16 +1663,50 @@ def linked_filament_id(spool, presets):
     preset = linked_preset((spool or {}).get("orca_preset"), presets)
     if not preset or preset["inherits"] or not preset["file"]:
         return ""
+    path = preset["file"]
     try:
-        with open(preset["file"], encoding="utf-8") as f:
+        mtime = os.stat(path).st_mtime
+    except OSError:
+        mtime = None
+    cached = _file_ids.get(path)
+    if cached and cached[0] == mtime:
+        return cached[1]
+    try:
+        with open(path, encoding="utf-8") as f:
             fid = json.load(f).get("filament_id")
+        fid = fid.strip() if isinstance(fid, str) else ""
     except (OSError, ValueError, AttributeError) as e:
-        log("agent: %s not readable (%s); the tray keeps its usual id" % (preset["file"], e))
+        log("agent: %s not readable (%s); the tray keeps its usual id" % (path, e))   # once per file version
+        fid = ""
+    _file_ids[path] = (mtime, fid)
+    return fid
+
+
+def link_notice(slot, name, presets):
+    """The notice for a toolhead whose orca_filament_preset names no usable preset, once per name per session
+    (Apply and AMS sync share it); "" when it is fine or was said already."""
+    if not name:
         return ""
-    return fid.strip() if isinstance(fid, str) else ""
+    if linked_preset(name, presets):
+        _links_warned.discard(name)   # fixed: if it breaks again, say so again
+        return ""
+    if name in _links_warned:
+        return ""
+    _links_warned.add(name)
+    if sum(p["name"].casefold() == name.casefold() for p in presets) > 1:
+        return tr("T%d: several user presets match \"%s\" ignoring case; write the exact name. The usual preset is used") % (slot, name)
+    return tr("T%d: no compatible user preset \"%s\" in OrcaSlicer, so the usual preset is used") % (slot, name)
 
 
-_links_warned = set()   # orca_filament_preset names already said to be missing, this session
+def notify(text):
+    """UI thread: an OrcaSlicer notification."""
+    ui = orca.host.ui
+    ui.push_notification(ui.NotificationLevel.RegularNotificationLevel, text)
+
+
+_links_warned = set()   # orca_filament_preset names already given a notice, this session
+_file_ids = {}          # preset file -> (mtime, filament_id) for linked_filament_id
+_logged_once = set()
 
 
 def spooler_state():
@@ -1699,10 +1752,10 @@ def _sync_reads(with_printer):
     name, inherits and model when with_printer, and user_presets)."""
     meta = filament_meta()
     if not with_printer:
-        return meta, None, user_presets()
+        return meta, None, _user_presets_safe()
     printer = orca.host.preset_bundle().current_printer_preset()
     return meta, {"name": printer.name, "inherits": clean(printer.config_value("inherits")),
-                  "model": clean(printer.config_value("printer_model"))}, user_presets()
+                  "model": clean(printer.config_value("printer_model"))}, _user_presets_safe()
 
 
 def sync_project(heads, tags, overrides=None, preset_preference=None, bound=None):
@@ -1724,10 +1777,9 @@ def sync_project(heads, tags, overrides=None, preset_preference=None, bound=None
         slot = head["index"] + 1
         link = ((bound(head["index"]) if bound else None) or {}).get("orca_preset")
         linked = linked_preset(link, mine)
-        if link and not linked and link not in _links_warned:
-            _links_warned.add(link)
-            problems.append(tr("T%d: no compatible user preset \"%s\" in OrcaSlicer, so the usual preset is used")
-                            % (slot, link))
+        notice = link_notice(slot, link, mine)
+        if notice:
+            problems.append(notice)
         preset_name = linked["name"] if linked else pick_filament_preset(
             names, head, tag, overrides, preference=preset_preference, colours=colours)
         colour = (tag or {}).get("colour") or head["colour"]

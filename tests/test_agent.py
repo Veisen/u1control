@@ -522,7 +522,9 @@ class PluginAgentTests(unittest.TestCase):
         profiles = {"version": 1, "filaments": {}, "spools": {"5": {"Snapmaker U1": name}}, "ids": {name: "SPL00000005AA"}}
         self.ns["spooler_bridge"].read_json = lambda folder, name: profiles   # the wheel's own module object
         spool = {"id": 5, "location": "U1 T1", "filament": {"id": 9, "vendor": {"name": "Acme"}, "material": "PLA",
-                                                              "color_hex": "FF0000"}}
+                                                              "color_hex": "FF0000"},
+                 "extra": {"orca_filament_preset": '"My PLA"'}}
+        self.ns["user_presets"] = lambda: 1 / 0   # OrcaSlicer won't list user presets: the link is ignored
         seen = []
 
         class FakeSpoolman:
@@ -604,6 +606,12 @@ class PluginAgentTests(unittest.TestCase):
         trays = messages[-1]["print"]["ams"][0]["tray"]
         self.assertEqual([t["tray_info_idx"] for t in trays], ["P1a2b3c", "OFYPdQJh", "", "OFmY0l6t"])
         self.assertEqual(off_ui, [])
+        ghost = [n for n in self.orca.notifications if '"Ghost"' in n]   # AMS sync says it too, once per name
+        self.assertEqual(len(ghost), 1)
+        self.assertIn("T4: no compatible user preset", ghost[0])
+        self.agent._wake.set()
+        self.assertTrue(wait_for(lambda: len(messages) > 1))
+        self.assertEqual(len([n for n in self.orca.notifications if '"Ghost"' in n]), 1)
 
     def connect(self, **kw):
         conn = self.orca.printer_agent.PrinterConnectionParams(**{"dev_id": "u1", "host": self.fake.host, **kw})
