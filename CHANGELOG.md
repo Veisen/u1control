@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- A toolhead with filament loaded but no linked Spoolman spool (or a spool without a full weight) shows a full reel in its colour with a small "?" badge, the amount unknown. It used to show the bare reel, which looked exactly like a head with nothing loaded; that one keeps the bare reel (shared UI foundation 4.2.2).
+
 ## [0.13.0] - 2026-11-18
 
 ### Changed
