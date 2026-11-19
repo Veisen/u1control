@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-11-19
+
 ### Fixed
 
 - A spool assigned to a toolhead in Spooler now shows in U1 Control without reconnecting: the tab re-reads Spoolman every 30 s while it is visible (Settings > Connection > **Refresh Spoolman every**: 10 to 300 s, or off), and at once when Spooler says it changed a link. Hidden, it pauses; after failed reads it waits longer, up to 5 minutes, and says "Spoolman unreachable, retrying". A link made in U1 Control likewise shows in Spooler's open tab at once.
