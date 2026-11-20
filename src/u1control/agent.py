@@ -103,8 +103,11 @@ def ams_block(heads, preferred=None):
             material = tray_type(h.get("type"), h.get("sub_type"))
             colour = _rgba(h.get("colour"))
             colours = [_rgba(c) for c in h.get("colours") or []] or [colour]
+            fid = (preferred(h) if preferred else "") or generic_filament_id(material)
+            if not fid:
+                fid = "U1_%s" % (material.split()[0] if material else "PLA")
             tray.update(tray_type=material, tray_color=colour, cols=colours, ctype=1, remain=-1,
-                        tray_info_idx=(preferred(h) if preferred else "") or generic_filament_id(material))
+                        tray_info_idx=fid)
         else:
             tray.update(tray_info_idx="", tray_type="", tray_color="00000000", tray_slot_placeholder="1")
         trays.append(tray)
