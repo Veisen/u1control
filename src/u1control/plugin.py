@@ -1118,7 +1118,7 @@ class U1Agent(pa.PrinterAgentBase):
         if start and self.host:   # the configured printer only, never a network scan (MRA announce_printhost_device)
             self._emit("ssdp", json.dumps({
                 "dev_name": "Snapmaker U1", "dev_id": self.dev_id or self.host, "dev_ip": self.host,
-                "dev_type": "Snapmaker U1", "dev_signal": "0", "connect_type": "lan", "bind_state": "free",
+                "dev_type": "797581801", "dev_signal": "0", "connect_type": "lan", "bind_state": "free",
                 "sec_link": "secure", "ssdp_version": "v1"}))
         return True
 
@@ -1131,7 +1131,8 @@ class U1Agent(pa.PrinterAgentBase):
 
     def bind_detect(self, dev_ip, sec_link, detect):
         detect.dev_id = self.dev_id if self.host and self.host == host_of(dev_ip) else dev_ip
-        detect.dev_name = detect.model_id = "Snapmaker U1"
+        detect.dev_name = "Snapmaker U1"
+        detect.model_id = "797581801"
         detect.version = self.firmware
         detect.connect_type, detect.bind_state = "lan", "free"
         return OK
@@ -1279,6 +1280,7 @@ class U1Agent(pa.PrinterAgentBase):
                 if not connected:
                     connected = True   # MRA perform_connection_async: ConnectStatusOk, then printer_connected
                     dev_id = self._dev_id()
+                    self.start_discovery(True, False)
                     self._emit("local_connect", 0, dev_id, "0")
                     self._emit("printer_connected", dev_id)
                 self._message(agent.push_status(view, self._preferred()))
@@ -1409,7 +1411,8 @@ class U1Agent(pa.PrinterAgentBase):
             if update_fn:
                 update_fn(STAGE_CREATE, 0, tr("Preparing..."))
             options = self._settings().effective()
-            agent.send_job(client, self._job_path(params), clean(params.project_name) or clean(params.task_name),
+            job_name = clean(getattr(params, "project_name", "")) or clean(getattr(params, "task_name", "")) or os.path.basename(clean(getattr(params, "filename", "")))
+            agent.send_job(client, self._job_path(params), job_name,
                            getattr(params, "plate_index", 1), options, VERSION, self._work_dir(),
                            self._progress(update_fn), cancel_fn)
         except agent.Cancelled:
@@ -1438,7 +1441,7 @@ class U1Agent(pa.PrinterAgentBase):
             task = {"bed_leveling": getattr(params, "task_bed_leveling", False),
                     "flow_cali": getattr(params, "task_flow_cali", False),
                     "timelapse": getattr(params, "task_record_timelapse", False)}
-            name = clean(params.project_name) or clean(params.task_name)
+            name = clean(getattr(params, "project_name", "")) or clean(getattr(params, "task_name", "")) or os.path.basename(clean(getattr(params, "filename", "")))
             job = agent.run_job(client, self._job_path(params), name,
                                 getattr(params, "plate_index", 1), getattr(params, "ams_mapping", ""), options,
                                 lambda view: U1PrintSetup._offered_prefs(options, view["options"]), task, VERSION,
@@ -1505,11 +1508,24 @@ class U1Agent(pa.PrinterAgentBase):
 
     # filaments ----------------------------------------------------------------------------------------------
     def get_filament_sync_mode(self):
-        return pa.FilamentSyncMode.Subscription
+        return pa.FilamentSyncMode.Pull
 
     def fetch_filament_info(self, dev_id, sync_mode=None):
-        self._wake.set()   # the next push carries the toolheads
-        return True
+        with self._lock:
+            client = self.client
+        if client is None:
+            return False
+        try:
+            view = run_off_thread(lambda: u1.summarize(client.query(u1.STATUS_OBJECTS)), timeout=10)
+            with self._lock:
+                self.view = view
+            self._message(agent.push_status(view, self._preferred()))
+            self._wake.set()
+            return True
+        except Exception as e:
+            log("agent: filament sync failed (%s)" % e)
+            self._wake.set()
+            return False
 
 
 NO_ADDRESS = "no U1 address set: set the printer preset's host to the U1's IP"
